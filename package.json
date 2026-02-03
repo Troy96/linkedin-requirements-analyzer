@@ -1,0 +1,23 @@
+{
+  "name": "linkedin-job-analyzer",
+  "version": "1.0.0",
+  "description": "Chrome extension and tools for analyzing LinkedIn job requirements",
+  "main": "analyzer/keyword_analyzer.js",
+  "scripts": {
+    "analyze": "node analyzer/keyword_analyzer.js",
+    "analyze:llm": "node analyzer/llm_analyzer.js",
+    "export": "node analyzer/export.js"
+  },
+  "keywords": [
+    "linkedin",
+    "jobs",
+    "analyzer",
+    "chrome-extension",
+    "career"
+  ],
+  "author": "",
+  "license": "MIT",
+  "engines": {
+    "node": ">=14.0.0"
+  }
+}

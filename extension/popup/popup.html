@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>LinkedIn Job Analyzer</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>LinkedIn Job Analyzer</h1>
+      <div class="stats" id="stats">
+        <span id="jobCount">0</span> jobs captured
+        <span class="storage-info">(<span id="storageUsed">0</span> KB)</span>
+      </div>
+    </header>
+
+    <div id="pageInfo" class="page-info hidden">
+      <span id="pageType"></span>
+    </div>
+
+    <div class="actions">
+      <button id="captureBtn" class="btn btn-primary">
+        <span class="btn-icon">+</span>
+        Capture Current Job
+      </button>
+      <button id="captureAllBtn" class="btn btn-primary hidden">
+        <span class="btn-icon">++</span>
+        Capture All Visible (<span id="visibleJobCount">0</span>)
+      </button>
+    </div>
+
+    <div class="section">
+      <div class="section-header">
+        <h2>Captured Jobs</h2>
+        <button id="clearAllBtn" class="btn btn-text btn-danger" title="Clear all captured jobs">
+          Clear All
+        </button>
+      </div>
+
+      <div id="jobList" class="job-list">
+        <div class="empty-state">
+          <p>No jobs captured yet.</p>
+          <p class="hint">Navigate to a LinkedIn job listing and click "Capture Current Job"</p>
+        </div>
+      </div>
+    </div>
+
+    <div id="fetchSection" class="section hidden">
+      <div class="section-header">
+        <h2>Fetch Full Details</h2>
+      </div>
+      <p class="hint" style="margin-bottom: 8px;">
+        <span id="missingDescCount">0</span> jobs missing descriptions for analysis
+      </p>
+      <button id="fetchDescBtn" class="btn btn-secondary" style="width: 100%;">
+        Fetch Descriptions (slow & safe)
+      </button>
+      <div id="fetchProgress" class="fetch-progress hidden">
+        <div class="progress-bar">
+          <div id="progressFill" class="progress-fill"></div>
+        </div>
+        <p id="fetchStatus">Starting...</p>
+        <button id="stopFetchBtn" class="btn btn-text btn-danger">Stop</button>
+      </div>
+    </div>
+
+    <div class="section">
+      <h2>Export & Analyze</h2>
+      <div class="button-group">
+        <button id="exportJsonBtn" class="btn btn-secondary">
+          Export JSON
+        </button>
+        <button id="exportCsvBtn" class="btn btn-secondary">
+          Export CSV
+        </button>
+        <button id="analyzeBtn" class="btn btn-primary">
+          Analyze Requirements
+        </button>
+      </div>
+    </div>
+
+    <div id="analysisResults" class="analysis-results hidden">
+      <div class="section-header">
+        <h2>Top Requirements</h2>
+        <button id="closeAnalysis" class="btn btn-text">Close</button>
+      </div>
+      <div id="analysisContent"></div>
+    </div>
+
+    <div id="toast" class="toast hidden"></div>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>
