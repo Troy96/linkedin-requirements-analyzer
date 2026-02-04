@@ -193,19 +193,64 @@ function extractJobFromPage() {
 
   if (!jobId) return null;
 
-  // Find title - try multiple selectors
+  // Find title - try multiple methods
   let title = null;
+
+  // Method 1: Try standard selectors
   const titleSelectors = [
     'h1',
     '.job-details-jobs-unified-top-card__job-title',
     '[class*="job-title"]',
-    '[class*="JobTitle"]'
+    '[class*="JobTitle"]',
+    '[data-testid*="title"]',
+    '[data-testid*="Title"]'
   ];
   for (const sel of titleSelectors) {
     const el = document.querySelector(sel);
     if (el) {
       title = el.textContent.trim();
-      if (title && title.length > 2) break;
+      if (title && title.length > 2 && title.length < 200) break;
+    }
+  }
+
+  // Method 2: Find the main h1 and get its full text content
+  if (!title || title.length < 3) {
+    const h1 = document.querySelector('h1');
+    if (h1) {
+      // Get all text nodes within h1
+      const walker = document.createTreeWalker(h1, NodeFilter.SHOW_TEXT, null, false);
+      let fullText = '';
+      let node;
+      while (node = walker.nextNode()) {
+        fullText += node.textContent;
+      }
+      title = fullText.trim().replace(/\s+/g, ' ');
+    }
+  }
+
+  // Method 3: Look for job-detail-page data attribute
+  if (!title || title.length < 3) {
+    const jobDetailEl = document.querySelector('[data-view-name="job-detail-page"]');
+    if (jobDetailEl) {
+      const h1InDetail = jobDetailEl.querySelector('h1');
+      if (h1InDetail) {
+        title = h1InDetail.textContent.trim();
+      }
+    }
+  }
+
+  // Method 4: Find prominent text at top of page
+  if (!title || title.length < 3) {
+    const topCard = document.querySelector('main, [role="main"], [class*="detail"]');
+    if (topCard) {
+      const headings = topCard.querySelectorAll('h1, h2, [class*="title"]');
+      for (const h of headings) {
+        const text = h.textContent.trim();
+        if (text.length > 5 && text.length < 200) {
+          title = text;
+          break;
+        }
+      }
     }
   }
 

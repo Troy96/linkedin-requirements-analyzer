@@ -289,7 +289,6 @@ async function captureAllJobs() {
   const btn = document.getElementById('captureAllBtn');
   btn.disabled = true;
   const originalText = btn.innerHTML;
-  btn.innerHTML = '<span class="btn-icon">...</span> Capturing...';
 
   try {
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
@@ -299,47 +298,101 @@ async function captureAllJobs() {
       return;
     }
 
-    // Use executeScript to extract jobs from list
+    btn.innerHTML = '<span class="btn-icon">...</span> Loading all...';
+
+    // First, try to modify the URL to load more jobs at once
+    // Use a very high count to ensure all jobs are loaded
+    const MAX_JOB_COUNT = 1000;
+
+    const urlModified = await chrome.scripting.executeScript({
+      target: { tabId: tab.id },
+      func: (maxCount) => {
+        const url = new URL(window.location.href);
+        const currentCount = parseInt(url.searchParams.get('count') || '0');
+
+        // If count param is less than max, increase it
+        if (currentCount < maxCount) {
+          url.searchParams.set('count', maxCount.toString());
+          window.location.href = url.toString();
+          return { modified: true, newCount: maxCount };
+        }
+        return { modified: false };
+      },
+      args: [MAX_JOB_COUNT]
+    });
+
+    // If URL was modified, wait for page to reload
+    if (urlModified && urlModified[0] && urlModified[0].result && urlModified[0].result.modified) {
+      btn.innerHTML = '<span class="btn-icon">...</span> Reloading...';
+      await sleep(3000);
+      // Wait for the page to finish loading
+      await waitForPageLoad(tab.id);
+      await sleep(2000); // Extra time for content to render
+
+      // Update the job count display after reload
+      await checkCurrentPage();
+    }
+
+    // Now capture all jobs from the page
+    let totalCaptured = 0;
+    let totalDuplicates = 0;
+    let allJobs = [];
+
+    // Extract jobs from current view
     const results = await chrome.scripting.executeScript({
       target: { tabId: tab.id },
       func: extractJobsFromListPage
     });
 
     if (results && results[0] && results[0].result) {
-      const jobs = results[0].result;
-
-      if (jobs.length === 0) {
-        showToast('No jobs found on this page', 'error');
-        return;
-      }
-
-      let captured = 0;
-      let duplicates = 0;
-
-      for (const job of jobs) {
-        try {
-          const saveResponse = await sendMessage('saveJob', { data: job });
-          if (saveResponse.success) {
-            if (saveResponse.duplicate) {
-              duplicates++;
-            } else {
-              captured++;
-            }
-          }
-        } catch (e) {
-          console.error('Error saving job:', e);
-        }
-      }
-
-      const msg = `Captured ${captured} jobs` +
-                  (duplicates > 0 ? `, ${duplicates} already existed` : '');
-      showToast(msg, 'success');
-      await loadJobs();
-      await updateStats();
-      updateFetchSection();
-    } else {
-      showToast('Could not find jobs on this page', 'error');
+      allJobs = results[0].result;
     }
+
+    if (allJobs.length === 0) {
+      showToast('No jobs found on this page', 'error');
+      return;
+    }
+
+    // Update display with actual job count found
+    const visibleJobCountEl = document.getElementById('visibleJobCount');
+    if (visibleJobCountEl) {
+      visibleJobCountEl.textContent = allJobs.length;
+    }
+    const pageTypeEl = document.getElementById('pageType');
+    if (pageTypeEl) {
+      pageTypeEl.textContent = `Found ${allJobs.length} jobs on this page`;
+    }
+
+    btn.innerHTML = `<span class="btn-icon">...</span> Capturing ${allJobs.length}...`;
+
+    // Save all jobs
+    for (let i = 0; i < allJobs.length; i++) {
+      const job = allJobs[i];
+      try {
+        const saveResponse = await sendMessage('saveJob', { data: job });
+        if (saveResponse.success) {
+          if (saveResponse.duplicate) {
+            totalDuplicates++;
+          } else {
+            totalCaptured++;
+          }
+        }
+        // Update progress every 10 jobs
+        if (i % 10 === 0) {
+          btn.innerHTML = `<span class="btn-icon">...</span> ${i + 1}/${allJobs.length}...`;
+        }
+      } catch (e) {
+        console.error('Error saving job:', e);
+      }
+    }
+
+    await loadJobs();
+    await updateStats();
+
+    const msg = `Captured ${totalCaptured} jobs` +
+                (totalDuplicates > 0 ? `, ${totalDuplicates} already existed` : '');
+    showToast(msg, 'success');
+    updateFetchSection();
   } catch (error) {
     console.error('Error capturing jobs:', error);
     showToast('Error: ' + error.message, 'error');
@@ -347,6 +400,176 @@ async function captureAllJobs() {
     btn.disabled = false;
     btn.innerHTML = originalText;
   }
+}
+
+// Wait for tab to finish loading
+async function waitForPageLoad(tabId) {
+  return new Promise((resolve) => {
+    const checkLoad = async () => {
+      try {
+        const results = await chrome.scripting.executeScript({
+          target: { tabId },
+          func: () => document.readyState
+        });
+        if (results && results[0] && results[0].result === 'complete') {
+          resolve();
+        } else {
+          setTimeout(checkLoad, 500);
+        }
+      } catch (e) {
+        resolve();
+      }
+    };
+    checkLoad();
+    // Timeout after 15 seconds
+    setTimeout(resolve, 15000);
+  });
+}
+
+// Check if there's a next page button and click it if found
+function checkAndClickNextPage() {
+  // Helper to reliably click an element
+  function clickElement(el) {
+    if (!el) return false;
+    try {
+      el.click();
+      el.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, view: window }));
+      return true;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  // Helper to check if element is visible and enabled
+  function isClickable(el) {
+    if (!el) return false;
+    if (el.disabled || el.hasAttribute('disabled')) return false;
+    if (el.getAttribute('aria-disabled') === 'true') return false;
+    const style = window.getComputedStyle(el);
+    if (style.display === 'none' || style.visibility === 'hidden' || style.opacity === '0') return false;
+    return true;
+  }
+
+  // PRIORITY 1: LinkedIn job tracker uses data-testid attribute
+  const nextByTestId = document.querySelector('[data-testid="pagination-controls-next-button-visible"]');
+  if (nextByTestId && isClickable(nextByTestId)) {
+    clickElement(nextByTestId);
+    return true;
+  }
+
+  // PRIORITY 2: Also check for prev button testid to find pagination area
+  const prevByTestId = document.querySelector('[data-testid="pagination-controls-previous-button-visible"]');
+  if (prevByTestId) {
+    // Next button should be a sibling
+    const parent = prevByTestId.parentElement;
+    if (parent) {
+      const buttons = parent.querySelectorAll('button');
+      const lastBtn = buttons[buttons.length - 1];
+      if (lastBtn && lastBtn !== prevByTestId && isClickable(lastBtn)) {
+        clickElement(lastBtn);
+        return true;
+      }
+    }
+  }
+
+  // PRIORITY 3: Generic next button selectors
+  const nextButtonSelectors = [
+    'button[aria-label="Next"]',
+    'button[aria-label="View next page"]',
+    'button[aria-label*="next" i]',
+    '.artdeco-pagination__button--next',
+  ];
+
+  for (const selector of nextButtonSelectors) {
+    const btn = document.querySelector(selector);
+    if (isClickable(btn)) {
+      clickElement(btn);
+      return true;
+    }
+  }
+
+  // PRIORITY 4: Find button containing "Next" text
+  const allButtons = document.querySelectorAll('button');
+  for (const btn of allButtons) {
+    const text = btn.textContent.trim().toLowerCase();
+    if (text === 'next' && isClickable(btn)) {
+      clickElement(btn);
+      return true;
+    }
+  }
+
+  return false;
+}
+
+// Wait for page content to update after pagination click
+async function waitForPageContentUpdate(tabId, previousJobCount = 0) {
+  // Wait for the page to settle after navigation
+  const maxWaitTime = 8000;
+  const checkInterval = 500;
+  let waited = 0;
+
+  while (waited < maxWaitTime) {
+    await sleep(checkInterval);
+    waited += checkInterval;
+
+    // Check if jobs are loaded on the page and count changed
+    const result = await chrome.scripting.executeScript({
+      target: { tabId },
+      func: (prevCount) => {
+        const jobLinks = document.querySelectorAll('a[href*="/jobs/view/"]');
+        const uniqueJobs = new Set();
+        jobLinks.forEach(link => {
+          const match = link.href.match(/\/jobs\/view\/(\d+)/);
+          if (match) uniqueJobs.add(match[1]);
+        });
+        // Return true if we have jobs and either count changed or we have enough jobs
+        return {
+          count: uniqueJobs.size,
+          ready: uniqueJobs.size > 0 && (uniqueJobs.size !== prevCount || uniqueJobs.size > 0)
+        };
+      },
+      args: [previousJobCount]
+    });
+
+    if (result && result[0] && result[0].result && result[0].result.ready) {
+      // Give a bit more time for full render
+      await sleep(1000);
+      return result[0].result.count;
+    }
+  }
+  return 0;
+}
+
+// Try to scroll down to trigger infinite scroll loading
+function scrollToLoadMore() {
+  // Find the scrollable container
+  const scrollContainers = [
+    document.querySelector('.jobs-search-results-list'),
+    document.querySelector('.scaffold-layout__list'),
+    document.querySelector('[class*="jobs-list"]'),
+    document.querySelector('main'),
+    document.documentElement
+  ];
+
+  for (const container of scrollContainers) {
+    if (container) {
+      const beforeScroll = container.scrollTop;
+      container.scrollTo({
+        top: container.scrollHeight,
+        behavior: 'smooth'
+      });
+
+      // Also try window scroll
+      window.scrollTo({
+        top: document.body.scrollHeight,
+        behavior: 'smooth'
+      });
+
+      console.log('[LinkedIn Analyzer] Scrolled to bottom');
+      return true;
+    }
+  }
+  return false;
 }
 
 async function deleteJob(jobId) {
@@ -655,19 +878,47 @@ function extractJobFromPage() {
 
   if (!jobId) return null;
 
-  // Find title - try multiple selectors
+  // Find title - try multiple methods
   let title = null;
+
+  // Method 1: Try standard selectors
   const titleSelectors = [
     'h1',
     '.job-details-jobs-unified-top-card__job-title',
     '[class*="job-title"]',
-    '[class*="JobTitle"]'
+    '[class*="JobTitle"]',
+    '[data-testid*="title"]'
   ];
   for (const sel of titleSelectors) {
     const el = document.querySelector(sel);
     if (el) {
       title = el.textContent.trim();
-      if (title && title.length > 2) break;
+      if (title && title.length > 2 && title.length < 200) break;
+    }
+  }
+
+  // Method 2: Get h1 text using TreeWalker for nested spans
+  if (!title || title.length < 3) {
+    const h1 = document.querySelector('h1');
+    if (h1) {
+      const walker = document.createTreeWalker(h1, NodeFilter.SHOW_TEXT, null, false);
+      let fullText = '';
+      let node;
+      while (node = walker.nextNode()) {
+        fullText += node.textContent;
+      }
+      title = fullText.trim().replace(/\s+/g, ' ');
+    }
+  }
+
+  // Method 3: Look for job-detail-page container
+  if (!title || title.length < 3) {
+    const jobDetailEl = document.querySelector('[data-view-name="job-detail-page"]');
+    if (jobDetailEl) {
+      const h1InDetail = jobDetailEl.querySelector('h1');
+      if (h1InDetail) {
+        title = h1InDetail.textContent.trim();
+      }
     }
   }
 
@@ -774,26 +1025,137 @@ function extractJobsFromListPage() {
     if (seen.has(jobId)) continue;
     seen.add(jobId);
 
-    // Get title from link text
-    let title = link.textContent.trim();
+    let title = null;
+    let company = null;
+    let location = null;
 
-    // If title is too short, try to find it in parent
-    if (title.length < 3) {
-      const parent = link.closest('li, div, article');
-      if (parent) {
-        const titleEl = parent.querySelector('strong, [class*="title"], h3, h4');
-        if (titleEl) title = titleEl.textContent.trim();
+    // Find the job card container - go up until we find a reasonable container
+    let card = link.parentElement;
+    for (let i = 0; i < 10 && card; i++) {
+      // Check if this looks like a job card (has multiple text elements)
+      const textContent = card.textContent.trim();
+      if (textContent.length > 20 && textContent.length < 1000) {
+        break;
       }
+      card = card.parentElement;
     }
 
-    // Try to find company
-    let company = null;
-    const parent = link.closest('li, div, article, [class*="card"]');
-    if (parent) {
-      const companyLink = parent.querySelector('a[href*="/company/"]');
+    if (card) {
+      // Method 1: Look for <p> elements containing the title (LinkedIn job tracker structure)
+      // Title is typically in a <p> with a <span> inside, as a sibling to the link
+      const paragraphs = card.querySelectorAll('p');
+      for (const p of paragraphs) {
+        const text = p.textContent.trim();
+        // Title is usually 5-150 chars, contains letters, not metadata
+        if (text.length > 5 && text.length < 150 &&
+            /[a-zA-Z]{3,}/.test(text) &&
+            !text.includes('ago') &&
+            !text.includes('Posted') &&
+            !text.includes('applicant') &&
+            !text.includes('Easy Apply')) {
+          title = text;
+          break;
+        }
+      }
+
+      // Method 2: Look for spans with substantial text (job title often in span)
+      if (!title) {
+        const spans = card.querySelectorAll('span');
+        for (const span of spans) {
+          const text = span.textContent.trim();
+          // Skip if it's a parent of other elements with different text
+          if (span.children.length > 0 && span.children[0].textContent.trim() !== text) {
+            continue;
+          }
+          if (text.length > 5 && text.length < 150 &&
+              /[a-zA-Z]{3,}/.test(text) &&
+              !text.includes('ago') &&
+              !text.includes('Posted') &&
+              !text.includes('applicant')) {
+            title = text;
+            break;
+          }
+        }
+      }
+
+      // Method 3: Get first substantial text node
+      if (!title) {
+        const walker = document.createTreeWalker(card, NodeFilter.SHOW_TEXT, null, false);
+        let node;
+        while (node = walker.nextNode()) {
+          const text = node.textContent.trim();
+          if (text.length > 5 && text.length < 150 && /[a-zA-Z]{3,}/.test(text)) {
+            title = text;
+            break;
+          }
+        }
+      }
+
+      // Find company - look for company link first
+      const companyLink = card.querySelector('a[href*="/company/"]');
       if (companyLink) {
         company = companyLink.textContent.trim();
       }
+
+      // Find company/location from spans (usually "Company - Location (Type)")
+      // Look for spans that contain " - " which indicates "Company - Location"
+      if (!company) {
+        const allSpans = card.querySelectorAll('span');
+        for (const span of allSpans) {
+          // Skip spans that contain other spans (we want leaf spans)
+          if (span.querySelector('span')) continue;
+
+          const text = span.textContent.trim();
+
+          // Skip if this is the title we already found
+          if (title && text === title) continue;
+
+          // Skip metadata like "Posted 7h ago", "Easy Apply", etc.
+          if (text.includes('Posted') ||
+              text.includes('ago') ||
+              text.includes('Easy Apply') ||
+              text.includes('applicant') ||
+              text.includes('Promoted')) continue;
+
+          // Company info often has format "Company - Location (Type)" or just "Company"
+          if (text.length > 2 && text.length < 150) {
+            if (text.includes(' - ')) {
+              // Parse "Company - Location" format
+              const parts = text.split(' - ');
+              company = parts[0].trim();
+              if (parts.length > 1) {
+                location = parts.slice(1).join(' - ').trim();
+              }
+              break;
+            } else if (!company && /^[A-Z]/.test(text) && !text.includes('http')) {
+              // Might be just company name (starts with capital letter)
+              company = text;
+            }
+          }
+        }
+      }
+
+      // Also check for location in parentheses like "(Remote)"
+      if (company && !location) {
+        const remoteMatch = company.match(/\(([^)]+)\)\s*$/);
+        if (remoteMatch) {
+          location = remoteMatch[1];
+          company = company.replace(/\s*\([^)]+\)\s*$/, '').trim();
+        }
+      }
+    }
+
+    // Fallback: try link text if nothing found
+    if (!title) {
+      const linkText = link.textContent.trim();
+      if (linkText.length > 3 && linkText.length < 200) {
+        title = linkText;
+      }
+    }
+
+    // Clean up title - remove extra whitespace
+    if (title) {
+      title = title.replace(/\s+/g, ' ').trim();
     }
 
     if (title && title.length > 2) {
@@ -802,7 +1164,7 @@ function extractJobsFromListPage() {
         url: href.split('?')[0], // Remove query params
         title: title,
         company: company,
-        location: null,
+        location: location,
         workplaceType: null,
         descriptionHtml: null,
         descriptionText: null,

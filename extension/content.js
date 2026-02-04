@@ -229,10 +229,26 @@
 
   /**
    * Clean and extract text content from an element
+   * Uses TreeWalker to handle deeply nested text nodes
    */
   function getCleanText(element) {
     if (!element) return null;
-    return element.textContent.trim().replace(/\s+/g, ' ');
+
+    // First try direct textContent
+    let text = element.textContent.trim().replace(/\s+/g, ' ');
+
+    // If that's empty or very short, try TreeWalker for nested text
+    if (!text || text.length < 3) {
+      const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT, null, false);
+      let fullText = '';
+      let node;
+      while (node = walker.nextNode()) {
+        fullText += node.textContent + ' ';
+      }
+      text = fullText.trim().replace(/\s+/g, ' ');
+    }
+
+    return text || null;
   }
 
   /**
