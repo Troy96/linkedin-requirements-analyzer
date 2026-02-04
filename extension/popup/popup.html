@@ -67,6 +67,17 @@
     </div>
 
     <div class="section">
+      <div class="section-header">
+        <h2>My Skills</h2>
+      </div>
+      <p class="hint">Enter skills you already have (comma-separated)</p>
+      <div class="skills-input-container">
+        <textarea id="mySkillsInput" placeholder="e.g. Python, React, SQL..."></textarea>
+        <button id="saveSkillsBtn" class="btn btn-secondary btn-small">Save Skills</button>
+      </div>
+    </div>
+
+    <div class="section">
       <h2>Export & Analyze</h2>
       <div class="button-group">
         <button id="exportJsonBtn" class="btn btn-secondary">
@@ -79,6 +90,14 @@
           Analyze Requirements
         </button>
       </div>
+    </div>
+
+    <div id="studyPlanSection" class="section">
+      <h2>Study Plan</h2>
+      <p class="hint">Generate a prioritized learning path based on your skill gaps.</p>
+      <button id="generateStudyPlanBtn" class="btn btn-primary btn-accent">
+        Generate Study Plan
+      </button>
     </div>
 
     <div id="analysisResults" class="analysis-results hidden">

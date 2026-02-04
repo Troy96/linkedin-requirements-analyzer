@@ -13,17 +13,20 @@ A Chrome extension + CLI toolkit to capture LinkedIn job listings and analyze sk
 ### 1. Chrome Extension - Job Capture
 
 **Multi-page support:**
+
 - Detail view (`/jobs/view/123`) - Captures single job with full description
 - List views (`/my-items/saved-jobs`, `/jobs-tracker`, `/jobs/collections`) - Bulk capture visible jobs
 - Search results page support
 
 **Robust DOM extraction (content.js):**
+
 - Multiple fallback selectors for each element (title, company, location, description)
 - LinkedIn uses CSS modules with dynamic class names - we use partial class matching (`[class*="job-title"]`)
 - TreeWalker for extracting text from deeply nested spans
 - Special handler for jobs-tracker page which has particularly dynamic markup
 
 **Key fixes:**
+
 - Title extraction: Falls back through h1 → data attributes → prominent text blocks
 - Description extraction: Finds "About the job" section, tries class patterns, then largest text block with job keywords
 - Job ID extraction: Handles `/jobs/view/123`, `currentJobId=123`, and `/jobs/collections/*/123` URL patterns
@@ -31,6 +34,7 @@ A Chrome extension + CLI toolkit to capture LinkedIn job listings and analyze sk
 ### 2. Background Description Fetching
 
 For jobs captured from list views (which don't include descriptions):
+
 - Opens a separate popup window (doesn't steal focus from main browser)
 - Navigates to each job page sequentially
 - Waits for page load + JS rendering (5 seconds)
@@ -48,30 +52,48 @@ For jobs captured from list views (which don't include descriptions):
 ### 4. Skill Analysis
 
 **Built-in popup analysis:**
+
 - 7 skill categories, 100+ keywords
 - Real-time frequency counting with regex word-boundary matching
 - Visual bar charts showing relative skill popularity
 - Shows percentage of jobs mentioning each skill
 
 **Command-line keyword analyzer (analyzer/keyword_analyzer.js):**
+
 - 11+ expanded categories
 - Multiple output formats: table, CSV, JSON
 - Configurable top-N filtering
 - Metrics: count, percentage, avg occurrences per job
 
 **LLM deep analysis (analyzer/llm_analyzer.js):**
+
 - Supports Anthropic Claude and OpenAI
 - Generates: skill breakdown, experience requirements, common responsibilities, industry trends
 - Personalized study recommendations
 - Skills gap analysis
+- Prioritized study plan generation (new)
 
-### 5. Export Options
+### 5. My Skills & Priority Study Plan
+
+**Personalized Learning Path:**
+
+- Input "My Skills" in the popup to store your baseline.
+- **Study Plan Generator:** Combines job requirements with your skills.
+- **Prioritization Logic:**
+  - P0: Core gaps found across most jobs.
+  - P1: Foundational prerequisites.
+  - P2: Quick-win skills for immediate impact.
+- Generates a 4-8 week structured plan with learning resources.
+
+### 6. Export Options
 
 **From extension popup:**
+
 - JSON (full data including HTML)
 - CSV (spreadsheet-compatible)
 
 **From CLI (analyzer/export.js):**
+
 - JSON, CSV, Markdown table, Plain text
 - Summary view grouped by company
 
@@ -80,15 +102,19 @@ For jobs captured from list views (which don't include descriptions):
 ## Technical Decisions
 
 ### Why multiple selector fallbacks?
+
 LinkedIn's frontend uses CSS modules that generate dynamic class names (e.g., `jobs-unified-top-card__job-title--abc123`). The actual class names change frequently. By checking multiple selectors and using partial matching, we maintain compatibility across LinkedIn updates.
 
 ### Why separate background window for fetching?
+
 Creating a popup window with `focused: false` allows the fetch process to run without interrupting the user's main browser window. They can continue browsing while descriptions are fetched.
 
 ### Why no npm dependencies?
+
 The CLI tools use only Node.js built-ins (`fs`, `https`, `path`). This keeps the project simple and avoids dependency management for what are essentially standalone scripts.
 
 ### Why regex word-boundary matching for skills?
+
 Using `\b` word boundaries prevents false positives like matching "Java" in "JavaScript". Case-insensitive matching handles variations like "AWS" vs "aws".
 
 ---
@@ -108,7 +134,8 @@ extension/
 analyzer/
 ├── keyword_analyzer.js # CLI keyword frequency analysis
 ├── llm_analyzer.js     # CLI LLM-powered deep analysis
-└── export.js           # CLI export utilities
+├── export.js           # CLI export utilities
+└── study_plan.js       # CLI LLM-powered prioritized study plan generator
 ```
 
 ---
@@ -128,15 +155,19 @@ analyzer/
 ## Usage Quick Reference
 
 **Capture jobs:**
+
 1. Navigate to LinkedIn saved jobs or job tracker
 2. Click extension icon → "Capture All Visible"
 3. For full descriptions: Click "Fetch Descriptions" or capture from detail pages
 
 **Analyze skills:**
+
 - In popup: Click "Analyze Requirements"
 - CLI: `node analyzer/keyword_analyzer.js exported-jobs.json`
 - Deep analysis: `ANTHROPIC_API_KEY=xxx node analyzer/llm_analyzer.js exported-jobs.json`
+- Study Plan: `ANTHROPIC_API_KEY=xxx node analyzer/study_plan.js jobs-and-skills.json`
 
 **Export:**
+
 - Popup: JSON or CSV buttons
 - CLI: `node analyzer/export.js exported-jobs.json --format markdown`
