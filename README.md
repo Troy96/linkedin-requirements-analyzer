@@ -9,6 +9,7 @@ A Chrome extension that captures job data from LinkedIn as you browse, stores it
 - **Deduplication**: Automatically prevents duplicate captures
 - **Export Data**: Export to JSON or CSV formats
 - **Keyword Analysis**: Built-in skill frequency analysis
+- **Study Plan**: Generate prioritized learning paths based on your skill gaps
 - **LLM Analysis**: Optional deep analysis using OpenAI or Anthropic APIs
 
 ## Installation
@@ -45,6 +46,7 @@ You can also browse through your saved jobs on LinkedIn and capture each one as 
 ### Viewing Captured Jobs
 
 Click the extension icon to see:
+
 - Total number of captured jobs
 - List of all captured jobs
 - Storage usage
@@ -52,6 +54,7 @@ Click the extension icon to see:
 ### Exporting Data
 
 From the extension popup:
+
 - **Export JSON**: Full job data including descriptions
 - **Export CSV**: Spreadsheet-compatible format
 
@@ -60,6 +63,7 @@ From the extension popup:
 #### Built-in Analysis (Extension)
 
 Click "Analyze Requirements" in the popup to see:
+
 - Most common skills by category
 - Frequency counts and percentages
 
@@ -96,7 +100,33 @@ node analyzer/llm_analyzer.js linkedin-jobs.json --provider openai
 node analyzer/llm_analyzer.js linkedin-jobs.json --output analysis.md
 ```
 
+#### Prioritized Study Plan
+
+Generate a structured learning path based on your current skills:
+
+1. Enter your skills in the extension popup and click "Save Skills"
+2. Click "Generate Study Plan" to export `jobs-and-skills.json`
+3. Run the study plan generator:
+
+```bash
+# Using Anthropic (default)
+export ANTHROPIC_API_KEY=your-api-key
+node analyzer/study_plan.js jobs-and-skills.json
+
+# Using OpenAI
+export OPENAI_API_KEY=your-api-key
+node analyzer/study_plan.js jobs-and-skills.json --provider openai --output study-plan.md
+```
+
+The study plan includes:
+
+- **Skill Gap Analysis**: Comparing your skills against job requirements
+- **Prioritized Path**: Learning order (High Impact, Foundational, Quick Wins)
+- **Weekly Schedule**: 4-8 week structured study plan
+- **Resources & Projects**: Curated learning materials and portfolio ideas
+
 The LLM analyzer provides:
+
 - Categorized technical skills analysis
 - Experience requirements summary
 - Soft skills identification
@@ -160,6 +190,7 @@ linkedin-optimizer/
 ### Selectors not working
 
 LinkedIn occasionally updates their page structure. If extraction fails:
+
 1. Open browser DevTools (F12)
 2. Inspect the job title/company/description elements
 3. Update the selectors in `content.js` if needed
@@ -167,6 +198,7 @@ LinkedIn occasionally updates their page structure. If extraction fails:
 ### Storage full
 
 Chrome extensions have storage limits. If you've captured many jobs:
+
 1. Export your data
 2. Clear captured jobs
 3. Consider deleting jobs you no longer need
@@ -175,12 +207,12 @@ Chrome extensions have storage limits. If you've captured many jobs:
 
 The extension uses these selectors (may need updates if LinkedIn changes):
 
-| Element | Primary Selector |
-|---------|------------------|
-| Job Title | `.job-details-jobs-unified-top-card__job-title` |
-| Company | `.job-details-jobs-unified-top-card__company-name` |
-| Location | `.job-details-jobs-unified-top-card__bullet` |
-| Description | `.jobs-description__content` |
+| Element     | Primary Selector                                   |
+| ----------- | -------------------------------------------------- |
+| Job Title   | `.job-details-jobs-unified-top-card__job-title`    |
+| Company     | `.job-details-jobs-unified-top-card__company-name` |
+| Location    | `.job-details-jobs-unified-top-card__bullet`       |
+| Description | `.jobs-description__content`                       |
 
 ## License
 
